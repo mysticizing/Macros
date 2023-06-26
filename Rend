@@ -1,0 +1,43 @@
+const target = game.user.targets?.values().next().value;
+
+if (target) {
+  const actor = target.actor;
+
+  for (let i = 1; i <= 10; i++) {
+    const effect = actor.effects.find((effect) => {
+      return effect.data.label === `Obsidian Fragment (${i})`;
+    });
+
+    if (effect) {
+      await effect.delete();
+      const numberOfDice = i;
+      const rollFormula = `${numberOfDice}d6`;
+      const roll = await new Roll(rollFormula).roll();
+
+      const damage = roll.total;
+
+      const chatData = {
+        user: game.user._id,
+        speaker: ChatMessage.getSpeaker({ actor: actor }),
+        content: `/r ${rollFormula}`,
+        type: CONST.CHAT_MESSAGE_TYPES.ROLL,
+        roll: roll,
+      };
+
+      await ChatMessage.create(chatData);
+
+      const hp = target.actor.data.data.attributes.hp.value;
+      const newHP = Math.max(0, hp - damage);
+
+      await target.actor.update({
+        'data.attributes.hp.value': newHP,
+      });
+
+      break; // Exit the loop after the first effect is found and processed
+    }
+  }
+
+  await game.dice3d.showForRoll(target.actor.data.data.attributes.hp);
+} else {
+  ui.notifications.warn('No target selected.');
+}
