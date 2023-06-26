@@ -1,43 +1,30 @@
-const target = game.user.targets?.values().next().value;
+const target = game.user.targets.first();
+if(!target?.actor) return ui.notifications.info("no targets selected");
+const test = new RegExp(/Obsidian Fragment \(([0-9]+)\)/)
+const effect = target.actor.effects.find(e => test.test(e.name));
+if(!effect) return;
 
-if (target) {
-  const actor = target.actor;
+const number = effect.name.match(/([0-9]+)/)[0];
+const formula = `${number}d6`;
+const roll = await new Roll(formula).evaluate();
+const damage = roll.total;
+await roll.toMessage({speaker: ChatMessage.getSpeaker({actor})});
 
-  for (let i = 1; i <= 10; i++) {
-    const effect = actor.effects.find((effect) => {
-      return effect.data.label === `Obsidian Fragment (${i})`;
-    });
+const updates = {
+  embedded: {ActiveEffect: {[effect.name]: warpgate.CONST.DELETE}},
+  actor: getHP(damage, target.actor.system.attributes.hp)
+};
 
-    if (effect) {
-      await effect.delete();
-      const numberOfDice = i;
-      const rollFormula = `${numberOfDice}d6`;
-      const roll = await new Roll(rollFormula).roll();
+await warpgate.mutate(target.document, updates, {}, {permanent: true});
 
-      const damage = roll.total;
-
-      const chatData = {
-        user: game.user._id,
-        speaker: ChatMessage.getSpeaker({ actor: actor }),
-        content: `/r ${rollFormula}`,
-        type: CONST.CHAT_MESSAGE_TYPES.ROLL,
-        roll: roll,
-      };
-
-      await ChatMessage.create(chatData);
-
-      const hp = target.actor.data.data.attributes.hp.value;
-      const newHP = Math.max(0, hp - damage);
-
-      await target.actor.update({
-        'data.attributes.hp.value': newHP,
-      });
-
-      break; // Exit the loop after the first effect is found and processed
-    }
-  }
-
-  await game.dice3d.showForRoll(target.actor.data.data.attributes.hp);
-} else {
-  ui.notifications.warn('No target selected.');
+// Calculate new hp values.
+function getHP(amount, hp){
+  const tmp = parseInt(hp.temp) || 0;
+  const dt = Math.min(tmp, amount);
+  const tmpMax = parseInt(hp.tempmax) || 0;
+  const dh = Math.clamped(hp.value - (amount - dt), 0, hp.max + tmpMax);
+  return {
+    "system.attributes.hp.temp": tmp - dt,
+    "system.attributes.hp.value": dh
+  };
 }
